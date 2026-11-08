@@ -40,9 +40,9 @@ Not sourced at all: heat-exchanger, encapsulation, installation and maintenance 
 
 Model limits: one simulated month is scaled to a year; billed demand is assumed to follow the cooling peak; chiller efficiency is constant; no design margin or N+1; flat tariff (the hourly-price hook in `evaluate` is unit-tested but not exposed in the UI). With the heuristic dispatch, PCM and/or water can raise the cooling peak above the no-storage peak at large panel counts; the NPV versus water is then not a saving versus doing nothing, and the app flags it. With optimized dispatch, the monthly starting state is fully discharged but the ending state may retain heat. The economics module currently adjusts the last hour's **energy** total for retained heat without applying the corresponding peak penalty; this can overstate cooling capacity and demand-charge benefits. Do not interpret any positive NPV as verified savings.
 
-## Explicitly not implemented
-Cooling plant COP/free-cooling performance calibration, weather integration, time-of-use/demand tariffs in the UI, real-time/forecast-constrained dispatch and periodic end-state optimization, installed-cost build-up (heat exchangers, encapsulation, installation), replacement/maintenance, embodied CO2e, operational emissions, U.S. hypothetical carbon-price scenario, graphite experimentally measured effectiveness, repeated-cycle material degradation. These should be separate validated modules in later PRs.
+## Still not implemented or validated
 
+Measured cooling-plant/vendor COP and fan curves, calibration using actual ESIF weather/power, realistic onsite electrical tariff, receding-horizon forecasting, physically constrained flow/pressure drop, temperature-dependent module approach limits, full-system embodied CO2e, standardized chiller plant sizing, graphite experimental validation, degradation, and repeated annual-weather validation. An **illustrative** plant/lifecycle module now exists; it is not a calibrated engineering model.
 
 ## New plant, emissions and cyclic-audit evidence (2026-11-08)
 
