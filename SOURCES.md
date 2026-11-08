@@ -20,5 +20,24 @@ The first milestone is a **research prototype**, not validated engineering desig
 - Controller: rank each day's IT hourly load, allow charge in eight highest load hours, regenerate in eight lowest. This is a **heuristic, not an optimization**. The same hours and geometry are applied to water and PCM, regardless of resulting heat-transfer capacity. Hourly storage kW are thermal energy / 1h; plant thermal load = IT power − storage kW. That equality does **not** compute chiller electricity or demand charges.
 - 100 panels * 1 m² * 0.05 m = 5 m³ gross material volume; the real encapsulated volume would differ. The water reference capacity for 10°C sensible change is 58.06 kWh.
 
-## Explicitly not implemented in milestone 1
-Cooling plant COP/free-cooling performance calibration, weather integration, time-of-use/demand tariffs, optimal dispatch, materials CAPEX/OPEX, replacement/maintenance, embodied CO2e, operational emissions, U.S. hypothetical carbon-price scenario, 5-year DCF, graphite experimentally measured effectiveness, repeated-cycle material degradation. These should be separate validated modules in later PRs.
+## Economics inputs (milestone 2, exploratory)
+
+Values below were read through a summarizing page fetch, not by opening each PDF. **Confirm each against its source before quoting it.**
+
+| Input | Default | Status | Basis |
+|---|---|---|---|
+| Electricity price | 14.00 ¢/kWh | sourced | EIA STEO Table 7c, U.S. commercial average, 2026 forecast (13.41 ¢ in 2025; 14.21 ¢ in 2027). https://www.eia.gov/outlooks/steo/tables/pdf/7ctab.pdf . National average, not a site tariff. |
+| Chiller electric intensity | 0.544 kW/ton | sourced | DOE FEMP water-cooled centrifugal chillers 300-399 tons, full-load requirement (IPLV 0.520). https://www.energy.gov/femp/purchasing-energy-efficient-water-cooled-electric-chillers . Compressor only. |
+| PCM material price | by material | range-sourced | OSTI 1813229 (cost data collected autumn 2020): CaCl2·6H2O 0.10-0.19 $/kg; Na2SO4·10H2O 0.03-0.09 $/kg; generic paraffin waxes 0.45-1.76 $/kg. https://www.osti.gov/servlets/purl/1813229 . Default is the midpoint. Branded Rubitherm RT28HC/RT35HC prices were **not found**; the paraffin range is a generic-wax proxy. Bulk material only, not installed. |
+| Demand charge | 15 $/kW-month | range-sourced | No national average found. NREL (Aug 2017) gives state medians of utility maximum demand charges from $3.60/kW (GA) to $18.50/kW (AZ), https://www.cleanegroup.org/wp-content/uploads/NREL_BatteryStorage_2017.pdf . The $15 default is an illustrative example rate from electricrates.org, not measured. |
+| Installed chiller cost | 1,000 $/ton | **placeholder** | **No source found.** Only a 2007 ACEEE case study's incremental water-cooled premium (>$500/ton) turned up, which is not an installed cost. The break-even chiller cost and the map's y-axis exist so this number can be replaced or bracketed. |
+| PCM containment premium | 0 $/m² | **placeholder** | **No source found.** 0 means PCM panels cost the same as water panels, which is optimistic for corrosive, supercooling salt hydrates. The break-even containment premium shows how much the model can absorb. |
+| Discount rate | 8 %/yr | assumption | Not sourced. |
+| Water fill cost | 0 $/kg | assumption | Not costed; assumed negligible. |
+
+Not sourced at all: heat-exchanger, encapsulation, installation and maintenance costs; PCM replacement/degradation; data-center-specific tariffs; thermal-storage tank costs (the water comparator is costed as a panel array identical to the PCM one).
+
+Model limits: one simulated month is scaled to a year; billed demand is assumed to follow the cooling peak; chiller efficiency is constant; no design margin or N+1; flat tariff (the hourly-price hook in `evaluate` is unit-tested but not exposed in the UI). With the heuristic dispatch, PCM and/or water can raise the cooling peak above the no-storage peak at large panel counts; the NPV versus water is then not a saving versus doing nothing, and the app flags it.
+
+## Explicitly not implemented
+Cooling plant COP/free-cooling performance calibration, weather integration, time-of-use/demand tariffs in the UI, optimal dispatch, installed-cost build-up (heat exchangers, encapsulation, installation), replacement/maintenance, embodied CO2e, operational emissions, U.S. hypothetical carbon-price scenario, graphite experimentally measured effectiveness, repeated-cycle material degradation. These should be separate validated modules in later PRs.

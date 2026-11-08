@@ -2,7 +2,7 @@
 
 **Research prototype: thermal storage comparison for liquid-cooled data centers.**
 
-A Shiny for Python app compares two identically sized, rack-adjacent thermal storage module arrays: **water (sensible heat)** and a selected **organic/inorganic PCM**. It estimates time-varying heat absorption, regeneration, and PCM melt fraction from a full calendar-month IT-power CSV. It does **not** yet report electrical savings, operating cost, payback, or CO2e.
+A Shiny for Python app compares two identically sized, rack-adjacent thermal storage module arrays: **water (sensible heat)** and a selected **organic/inorganic PCM**. It estimates time-varying heat absorption, regeneration, and PCM melt fraction from a full calendar-month IT-power CSV. An **Economics tab** adds an *exploratory* five-year PCM-vs-water comparison (NPV, break-even PCM price, break-even containment premium). It does **not** yet report weather-dependent chiller electricity, tariff optimization, or CO2e, and several economic inputs are unsourced placeholders (see below).
 
 ## Run
 
@@ -43,6 +43,30 @@ timestamp,it_power_kw
 - Identical geometry and daily load-ranked dispatch heuristic for both.
 - Organic paraffin and inorganic salt-hydrate materials; graphite toggle is **hypothetical** pending measurements.
 
+## Economics tab (exploratory)
+
+Compares the PCM array against the **water** array from the thermal run (same panels, volume and dispatch). Positive NPV means PCM beats water. Value comes from (1) avoided chiller capacity, (2) demand-charge reduction, (3) energy-cost change. With a flat tariff and constant chiller efficiency (3) is zero by construction, because storage shifts heat rather than removing it.
+
+Every input carries a provenance badge: **sourced**, **range-sourced**, **assumption**, or **placeholder (no source found)**. The headline outputs are break-even values rather than a single savings figure:
+
+- **Break-even PCM price** and **break-even containment premium ($/m²)**: how much extra panel cost the modeled benefit can absorb. Panel hardware, heat exchangers and installation are assumed identical for PCM and water; corrosive salt hydrates will cost more, so this *favours PCM*.
+- **Peak vs no storage** is shown next to peak vs water. Under the current top-8/bottom-8 heuristic, regeneration in low-load hours can create new cooling peaks (observed at 1,000 panels on the synthetic profile). When PCM or water exceeds the no-storage peak the app raises a red warning, because beating water then does not mean saving anything.
+
+The default workload is synthetic. Do not quote its economics. Sources and limits: [SOURCES.md](SOURCES.md).
+
+## Deploying to a shareable link
+
+The app needs a Python host (it is a Shiny for Python app with `shinywidgets`), not static hosting. On [shinyapps.io](https://www.shinyapps.io):
+
+```bash
+pip install rsconnect-python
+# shinyapps.io -> Account -> Tokens -> Show -> copy name, token, secret
+rsconnect add --account NAME --name NAME --token TOKEN --secret SECRET
+rsconnect deploy shiny . --name NAME --title flux-capacitor --entrypoint app:app
+```
+
+This deploy path has **not been tested** from this repository (it needs your account credentials). Check your plan's active-hour and idle-sleep limits before a demo, and open the link a few minutes beforehand so it is awake. `requirements.txt` also lists `pytest` and `scipy`, which the app does not need and which only lengthen the build.
+
 ## Validation
 
 ```bash
@@ -53,4 +77,4 @@ Detailed distinctions between source-derived inputs and research assumptions are
 
 ## Next milestone
 
-Add a documented temperature-dependent heat-rejection plant, thermal-cycling-constrained dispatch optimization, and a fully sourced monthly electricity tariff. Only then connect to annualized CAPEX/OPEX, emissions, and 5-year financial forecasts.
+Replace the top-8/bottom-8 heuristic with a dispatch that cannot create new cooling peaks, add a documented temperature-dependent heat-rejection plant and a fully sourced tariff, and replace the placeholder chiller and containment costs with vendor quotes. Only then treat the five-year economics as more than exploratory. Emissions are still not modelled.
