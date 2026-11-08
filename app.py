@@ -317,10 +317,10 @@ def server(input, output, session):
                 "Panel back face insulated, 1D conduction, idealized uniform interface coefficient. "
                 "No heat-exchanger pressure drop, tank wall/encapsulation, hysteresis, corrosion, graphite cost, "
                 "weather-linked cooling plant, or measured facility calibration. \n"
-                "Comparison is heat shifted; cost effects are on the Economics tab and rest on the assumptions listed there. "
-                ("Optimized independent load-ceiling dispatch with perfect monthly foresight.\\n"
+                "Comparison is heat shifted; cost effects are on the Economics tab and rest on the assumptions listed there. " +
+                ("Optimized independent load-ceiling dispatch with perfect monthly foresight.\n"
                  if d["dispatch"] == "optimized" else
-                 "Both systems use the same fixed load-ranking heuristic.\\n")
+                 "Both systems use the same fixed load-ranking heuristic.\n") +
                 f"Material source: {d['material'].source_url}")
 
     @render.data_frame
