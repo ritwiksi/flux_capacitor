@@ -24,3 +24,5 @@ jobs:
         run: python -m pytest -q
       - name: Benchmark default synthetic profile
         run: python -m scripts.benchmark_peak
+      - name: Benchmark end-to-end month including cycle audit
+        run: python -m scripts.benchmark_full
