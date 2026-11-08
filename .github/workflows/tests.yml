@@ -18,6 +18,8 @@ jobs:
         run: python -m compileall -q app.py pcm tests scripts
       - name: Import constructed Shiny app
         run: python -c "from app import app; print('Shiny app constructed successfully')"
+      - name: Smoke-test Shiny HTTP startup
+        run: python -m scripts.smoke_web_app
       - name: Run tests
         run: python -m pytest -q
       - name: Benchmark default synthetic profile
