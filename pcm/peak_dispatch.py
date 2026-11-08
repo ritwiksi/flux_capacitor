@@ -40,6 +40,9 @@ def _simulate_targets(
     water_target_kw: float,
     *,
     early_exit: bool = False,
+    initial_pcm_h: np.ndarray | None = None,
+    initial_water_c: float | None = None,
+    state_out: dict | None = None,
 ) -> tuple[pd.DataFrame | None, bool, bool]:
     """Simulate two independent, threshold-constrained heat stores.
 
@@ -67,8 +70,15 @@ def _simulate_targets(
     nstep = int(ceil(3600.0 / min(cfg.timestep_s, dt_max, 60.0)))
     dt = 3600.0 / nstep
 
-    h_pcm = np.full(cfg.pcm_cells, material.heat_capacity_j_kg_k * cfg.supply_c, dtype=float)
-    t_water = cfg.supply_c
+    if initial_pcm_h is None:
+        h_pcm = np.full(cfg.pcm_cells, material.heat_capacity_j_kg_k * cfg.supply_c, dtype=float)
+    else:
+        h_pcm = np.asarray(initial_pcm_h, dtype=float).copy()
+        if h_pcm.shape != (cfg.pcm_cells,) or not np.isfinite(h_pcm).all():
+            raise ValueError("Invalid initial PCM enthalpy state.")
+    t_water = cfg.supply_c if initial_water_c is None else float(initial_water_c)
+    if not np.isfinite(t_water):
+        raise ValueError("Invalid initial water temperature.")
     c_water = 1000.0 * area * cfg.thickness_m * 4180.0
     ua_pcm = area / (1.0 / cfg.heat_transfer_w_m2_k + dx / (2.0 * material.conductivity_w_m_k))
     conductance = material.conductivity_w_m_k * area / dx
@@ -84,7 +94,7 @@ def _simulate_targets(
         water_limit = abs(q - water_target_kw) * 1000.0
         p_energy = w_energy = 0.0
 
-        if pmode != 0 and pcm_feasible:
+        if pmode != 0 and (pcm_feasible or not early_exit):
             fluid_temp = cfg.return_c if pmode == 1 else cfg.supply_c
             for _ in range(nstep):
                 t, _ = _state_to_temp(h_pcm, material)
@@ -100,7 +110,7 @@ def _simulate_targets(
                 h_pcm[-1] += q_internal[-1] * dt / mass_cell
                 p_energy += q_face * dt
 
-        if wmode != 0 and water_feasible:
+        if wmode != 0 and (water_feasible or not early_exit):
             fluid_temp = cfg.return_c if wmode == 1 else cfg.supply_c
             for _ in range(nstep):
                 q_water = ua_water * (fluid_temp - t_water)
@@ -135,6 +145,9 @@ def _simulate_targets(
             pcm_plant_thermal_kw=p_plant, water_plant_thermal_kw=w_plant,
         ))
 
+    if state_out is not None:
+        state_out["pcm_h"] = h_pcm.copy()
+        state_out["water_c"] = float(t_water)
     return (None if early_exit else pd.DataFrame(rows)), pcm_feasible, water_feasible
 
 
