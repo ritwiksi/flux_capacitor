@@ -82,3 +82,20 @@ Detailed distinctions between source-derived inputs and research assumptions are
 ## Next milestone
 
 Validate month-to-month cyclic recovery (the end-state must return to its starting energy before crediting a repeatable peak reduction), replace month-ahead foresight with an implementable predictive controller, then add a documented temperature-dependent heat-rejection plant and fully sourced tariff. Replace placeholder chiller, containment, pump and installation costs with vendor quotes. Only then treat the five-year economics as more than exploratory. Emissions are still not modelled.
+
+
+## Extension: cyclic audit, plant and lifecycle (2026-11-08)
+
+The **Plant & lifecycle** tab introduces a scenario-only energy/emissions and financial model. It is distinct from the historical **Economics (legacy thermal proxy)** tab. Both the default 2025 summer load and default ambient temperatures are **synthetic**.
+
+- A repeat-month auditor replays the threshold controller up to four identical months, carrying each PCM cell's enthalpy and the water storage temperature across month boundaries. A cycle is verified only if its full thermal state converges, hourly plant peak stays within the requested ceiling, and the integrated storage energy balance closes. Failure is reported. A repeated synthetic month does not validate seasonal reliability.
+- A liquid heat-capture slider governs how much measured IT electrical consumption is modeled as heat entering the 27/37 C liquid loop. All IT electricity is still included in the *facility* electricity-peak tariff calculation.
+- The plant is a **hypothetical** dry cooler, compressor chiller and pump/fan model. Free cooling varies with ambient temperature, and chiller COP changes with ambient; the app accepts a complete hourly outside_air_temp_c CSV field or generates a transparently synthetic diurnal ambient curve. All curve coefficients are assumptions, not manufacturer calibration.
+- Monthly billing uses facility-level hourly kWh at a flat price and the monthly peak facility kW at an illustrative demand tariff. Water and PCM have independent cooling loads and the same electricity tariff.
+- Lifecycle compares total installed media, container, common installation, maintenance, scheduled replacements and illustrative five-year operating differences. Optional avoided-chiller capacity credit defaults OFF and cannot be applied unless **both** periodic audits verify. Media-only operational/embodied CO2e is an approximation, **not** a whole-system LCA.
+- Download buttons export modeled hourly thermal and electrical data plus an assumptions/audit JSON.
+- The user's initial synthetic 100-panel settings are retained. Real-world claims require measured load + weather, vendor curves, system pressure drop/flow modeling, verified installation bids and a full-year/cyclic operational validation. There is no embedded digital twin/COMSOL connection in this module.
+
+### Next research improvements
+
+Build a forecast-constrained controller without perfect monthly foresight, model a physically complete flow-limited warm-water loop, validate against plant data and seasonal weather, perform mesh/timestep convergence, verify salt-hydrate degradation/hysteresis, and replace scenario values with source-verified industrial tariffs and LCA factors. Before a live presentation, perform a manual browser test and deploy to an authorized Shiny host.
