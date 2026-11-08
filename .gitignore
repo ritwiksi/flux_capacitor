@@ -1,0 +1,9 @@
+__pycache__/
+.pytest_cache/
+.venv/
+*.pyc
+.env
+# Licensed/original NLR raw datasets can be large; download locally.
+data/esif_*.csv
+data/*.parquet
+*.zip
