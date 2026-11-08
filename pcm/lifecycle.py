@@ -100,7 +100,11 @@ def evaluate_lifecycle(
     water_bill, water_kwh = bill("water")
     pcm_maintenance = pcm_capex * options.pcm_maintenance_fraction_year
     water_maintenance = water_capex * options.water_maintenance_fraction_year
-    annual_saving = (water_bill - pcm_bill) * 12.0 + (water_maintenance - pcm_maintenance)
+    cycle_verified = bool(pcm_cycle_verified and water_cycle_verified)
+    # A transient month may have net stored heat; never annualize its savings as
+    # repeatable unless both physical states have passed the periodic audit.
+    bill_saving_year = (water_bill - pcm_bill) * 12.0 if cycle_verified else 0.0
+    annual_saving = bill_saving_year + (water_maintenance - pcm_maintenance)
     capacity_credit = 0.0
     warnings = [
         "All costs, COP curves, embodied coefficients and grid carbon intensity are illustrative assumptions.",
@@ -108,8 +112,12 @@ def evaluate_lifecycle(
         "No pump/heat-exchanger pressure-drop curves, PCM hysteresis, N+1 redundancy, capacity increments, "
         "degradation, or vendor bids are modeled.",
     ]
+    if not cycle_verified:
+        warnings.append("Unverified cyclic storage: monthly operating figures are shown for diagnosis, "
+                        "but NO energy/demand benefits are annualized into NPV, and annual "
+                        "operational CO2e uses common no-storage cooling as its conservative reference.")
     if options.allow_capacity_credit:
-        if pcm_cycle_verified and water_cycle_verified:
+        if cycle_verified:
             delta_kw = (float(plant.water_heat_rejection_kwth.max()) -
                         float(plant.pcm_heat_rejection_kwth.max()))
             capacity_credit = delta_kw / KWTH_PER_TON * options.chiller_installed_usd_per_ton
@@ -121,8 +129,9 @@ def evaluate_lifecycle(
     water_embodied = water_mass * options.water_embodied_kgco2e_kg
     pcm_month_co2 = pcm_kwh * options.grid_kgco2e_kwh
     water_month_co2 = water_kwh * options.grid_kgco2e_kwh
-    pcm_5y = pcm_embodied + 12 * options.years * pcm_month_co2
-    water_5y = water_embodied + 12 * options.years * water_month_co2
+    reference_co2 = float(plant.none_cooling_electric_kw.sum()) * options.grid_kgco2e_kwh
+    pcm_5y = pcm_embodied + 12 * options.years * (pcm_month_co2 if cycle_verified else reference_co2)
+    water_5y = water_embodied + 12 * options.years * (water_month_co2 if cycle_verified else reference_co2)
 
     flows = []
     cash_zero = water_capex - pcm_capex + capacity_credit
@@ -140,8 +149,9 @@ def evaluate_lifecycle(
         # Shadow carbon price is an optional illustrative economic convention.
         # Applying it to *operational* emissions only avoids double-counting media
         # embodied costs and avoids implying a real federal carbon levy.
-        value += ((water_month_co2 - pcm_month_co2) * 12 / 1000 *
-                  options.shadow_price_usd_tco2e)
+        if cycle_verified:
+            value += ((water_month_co2 - pcm_month_co2) * 12 / 1000 *
+                      options.shadow_price_usd_tco2e)
         fac = (1 + options.discount_rate) ** (-year)
         flows.append({"year": year, "net_savings_usd": value, "discount_factor": fac,
                       "discounted_usd": value * fac})
