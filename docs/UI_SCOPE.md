@@ -1,65 +1,58 @@
 # UI scope: Flux Capacitor
 
-One Shiny app, two tabs. Tab 1 is Ritwik's existing thermal lab, unchanged. Tab 2 is new and is what we demo.
+One Shiny app, **one page**, three features: **Configure**, **Result**, **Proof**. Everything shown comes from
+`pcm.annual` (see CLAUDE.md for the interface). The only cost shown is **annual cost**.
 
-## Layout
-`ui.page_navbar` with:
-1. **Annual cost (Boston 2024)**: new, default tab.
-2. **Thermal lab**: the current app body and sidebar, moved into a `nav_panel` with `ui.layout_sidebar`. No behaviour change.
+## 1. Configure (sidebar)
+| Control | Type | Default | Notes |
+|---|---|---|---|
+| Scenario | radio, 2 options | Chiller plant (PCM showcase) | **Chiller plant (PCM showcase)** = `PRESETS` showcase, economiser off. **Boston with free cooling** = `PRESETS` as-built, economiser on. The scenario owns the economiser setting |
+| PCM material | select, short labels | from scenario | 4 materials from `materials.py`, e.g. "Salt hydrate: Na₂SO₄·10H₂O" |
+| PCM thickness | mm | from scenario | Changes both capacity and charge speed |
+| Datacenter size | MW of IT | 1.0 | Scales the ESIF load shape |
+| Run | button | | Model runs only on click (LP takes ~0.5 s) |
+| **Advanced (assumed values)** | collapsed accordion | | All assumed, all editable |
+| Panels per MW | numeric | from scenario | 1 m² each; dominates results |
+| PCM price | $/kg | 5 paraffin / 2 salt hydrate | Default switches with category |
+| Demand charge | $/kW-month | 15 | Placeholder |
+| Chiller capex | $/kW_th | 250 | Annualised at 7 %, 20 yr |
+| Tower approach | K | 4 | Used only when free cooling is on |
+| Nano-graphite | checkbox | off | **Hypothetical**: no measured properties |
 
-## Tab "Annual cost": inputs (sidebar)
-| Control | Type | Default | Range | Notes |
-|---|---|---|---|---|
-| PCM material | select, grouped by category | RT35HC | 4 materials from `materials.py` | Paraffin vs salt hydrate is the headline choice |
-| PCM thickness | slider, mm | 50 | 20–100, step 5 | Changes both capacity and charge speed |
-| Datacenter size | numeric, MW of IT | 1.0 | 0.5–20 | Scales the ESIF load shape |
-| Panels per MW | numeric | 100 | 10–5000 | 1 m² each. Shown openly because it dominates results |
-| Run | button | | | Model runs only on click (LP takes seconds) |
-| **Advanced** (collapsed accordion) | | | | All assumed values, editable |
-| PCM price | numeric, $/kg | 5 paraffin / 2 salt hydrate | 0.5–30 | Default switches with category |
-| Demand charge | numeric, $/kW-month | 15 | 0–40 | Placeholder |
-| Chiller capex | numeric, $/kW_th | 250 | 0–1000 | Annualised at 7 %, 20 yr |
-| Free cooling (economiser) | checkbox | on | | Tower cools the loop when wet-bulb allows |
-| Tower approach | numeric, K | 4 | 2–8 | Assumed |
+## 2. Result (one hero section)
+- **Headline: break-even PCM price** ($/kg, the price at which PCM pays back over its life), with a verdict against
+  the assumed price: *pays* if break-even ≥ assumed price, otherwise *does not pay*. A "does not pay" result is shown
+  plainly; it is a valid answer.
+- **Three stats**: annual saving ($ and %), payback (years, or "never"), chiller capacity avoided (kW_th).
+- **One context line**: for free cooling, the computed free-cooling hours (full / partial) from the weather.
 
-## Outputs
-### KPI cards (one row, then a second row)
-1. **Annual cost saving**: $ and % (baseline total − PCM total). Total = energy + demand charges + annualised chiller.
-2. **Cooling energy saving**: MWh_e and %.
-3. **PUE**: baseline → with PCM. Plus **free-cooling hours** (full / partial) from the weather.
-4. **Peak demand reduction**: kW_e on the grid (max monthly peak) and kW_th of chiller capacity avoided.
-5. **PCM capex and payback**: $ capex, simple payback in years, or "no payback" if savings ≤ 0.
-6. **Break-even PCM price**: the $/kg at which PCM pays back over its life. This is the headline for contractors.
-
-### Charts (Plotly, existing `_fig` helper style)
-1. **Monthly cost**: grouped bars, baseline vs PCM.
-2. **Hottest week, hourly**: chiller thermal load baseline vs PCM, plus PCM state of charge on a second axis.
-   Week = the 168 h with the highest mean wet-bulb in 2024 (computed, not hard-coded).
-
-### Assumptions panel
-A card listing every parameter used in the run, tagged **sourced** or **assumed**, plus data provenance:
-ESIF (Golden, CO, measured, scaled), NSRDB Boston weather, ISO-NE wholesale prices, ESIF fill count.
+## 3. Proof
+- **Chart "PCM in action: peak week" (168 h around the annual chiller peak)** (Plotly): chiller thermal load baseline vs with PCM, plus PCM stored energy
+  (kWh_th) on a second axis. Week = the 168 h with the highest mean wet-bulb in 2024 (computed, not hard-coded).
+  x-axis in **local standard time** (data are stored in UTC).
+- **"Assumptions and sources"** (collapsed accordion): every parameter of the run with a human-readable label and a
+  tag **input**, **sourced** or **assumed**, plus data provenance: ESIF (Golden, CO, measured, scaled), NSRDB Boston
+  weather, ISO-NE wholesale prices, ESIF filled-hour count.
 
 ## States
 - Before first run: a one-line prompt plus the data provenance.
 - Running: Shiny's busy indicator; inputs stay editable.
-- Error: red alert with the exception text (same pattern as tab 1).
-- Savings ≤ 0: show it plainly. A "PCM does not pay here" result is valid.
+- Error: red alert with the exception text.
 
-## Performance budget
-One run (LP over 8784 h) must finish in about 5 s on a laptop. If it doesn't, fall back to the rule-based dispatch
-and say so in the UI.
+## Removed for the demo
+- **Thermal lab tab**: one message per page. Its model (`pcm/thermal.py`), tests and SOURCES.md entries remain; the
+  UI is recoverable from git history.
+- **Monthly cost chart**: baseline and PCM bars were visually identical.
+- **PUE card and cooling-energy card**: differences of ~0.1 %, not decision-relevant.
+- **Separate peak-grid card**: folded into chiller capacity avoided.
+- **Economiser checkbox**: the scenario radio owns it.
+
+## Design rules (from the UI audit)
+- No nested cards.
+- Prose max ~70ch per line.
+- Correct heading order (no skipped levels).
+- Functional text ≥ 11 px.
+- No horizontal overflow at 390 px width.
 
 ## Out of scope for the demo
-BESS, other cities or years, CSV upload on tab 2, CO2, accounts, deployment, mobile layout.
-
-## Build order (each step demoable)
-1. `pcm/annual.py` + tests (no UI).
-2. Navbar wrapper; tab 1 still works.
-3. Tab 2 inputs + KPI cards.
-4. Two charts + assumptions card.
-5. README section and SOURCES.md entries for the new data.
-
-## Decided
-- **Cooling plant**: water-cooled chiller + cooling tower with waterside economiser. Free cooling per hour comes from
-  NSRDB wet-bulb (from temperature and RH). Toggle in the UI so the no-economiser case can be shown too.
+BESS, other cities or years, CSV upload, CO2, accounts, deployment.

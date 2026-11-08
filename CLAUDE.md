@@ -4,8 +4,8 @@ Read this before touching the repo. It is the shared brief for every agent worki
 
 ## What we are building
 A Shiny for Python tool that lets a datacenter contractor choose a PCM technology, PCM thickness and datacenter
-size, and see the effect on **annual cost, cooling energy and peak demand** for a datacenter in **Boston, 2024**,
-compared with the same facility without PCM. Audience: hackathon judges. **Deadline: a few hours.** Ship the
+size, and see the effect on **annual cost** (saving, payback, break-even PCM price, chiller capacity avoided) for a
+datacenter in **Boston, 2024**, compared with the same facility without PCM. Single page: Configure, Result, Proof. Audience: hackathon judges. **Deadline: a few hours.** Ship the
 smallest thing that works and is honest.
 
 Detailed UI spec: [docs/UI_SCOPE.md](docs/UI_SCOPE.md). Sources and provenance: [SOURCES.md](SOURCES.md).
@@ -21,13 +21,13 @@ Detailed UI spec: [docs/UI_SCOPE.md](docs/UI_SCOPE.md). Sources and provenance: 
 | Cooling | Conventional water cooling: water-cooled chiller + cooling tower **with waterside economiser (free cooling)**, driven by NSRDB wet-bulb |
 | Scenarios | Baseline (no PCM) vs PCM. **No BESS, no other cities, no CO2** in v1. |
 | Dispatch | Linear program over the full year (`scipy.optimize.linprog`, HiGHS). No new dependencies. ~0.5 s per run. |
-| Framing | **PCM-first.** Open the UI on the PCM showcase preset; always show the free-cooling preset one click away. |
+| Framing | **PCM-first.** Scenario radio: "Chiller plant (PCM showcase)" is the default; "Boston with free cooling" is one click away. The scenario owns the economiser setting. |
 
 ## Repo map
 ```
-app.py                 Shiny app. Tab 1 "Thermal lab" = Ritwik's original; tab 2 "Annual cost" = new
+app.py                 Shiny app, single page, annual cost only (Thermal lab tab removed for the demo; in git history)
 pcm/materials.py       4 PCMs (2 paraffin, 2 salt hydrate) with sources + limitations. Reuse, don't fork.
-pcm/thermal.py         Ritwik's 1D enthalpy PCM vs water model (monthly). Do not change its physics.
+pcm/thermal.py         Ritwik's 1D enthalpy PCM vs water model (monthly). No UI now; tests remain. Do not change its physics.
 pcm/workload.py        Month importer (ESIF timestamp parse bug: see Known issues)
 pcm/annual.py          NEW: annual cost model (PCM limits, COP, LP, KPIs)
 scripts/prepare_boston_2024.py   NEW: builds data/boston_2024_hourly.csv from raw downloads
@@ -56,16 +56,16 @@ tests/                 pytest; every new module gets tests
 | Loop supply / return | 27 / 37 °C (Ritwik's config) |
 | Panels per MW of IT | 100 (1 m² face each; Ritwik's default for ~1 MW) |
 | Fluid-side h | 150 W/m²K (Ritwik's config) |
-| Chiller COP | 6.0 at T_wb = 20 °C, −0.15 per K, floor 3.0 |
+| Chiller COP | 6.0 at T_wb = 20 °C, −0.2 per K, floor 3.0 (EIA 2023: COP 6.3–7.2; slope inferred from CA Title 24 §110.2 curve) |
 | Economiser | on; tower approach 4 K; free-cooling COP 25 (fans + pumps) |
-| Demand charge c_d | $15/kW-month (placeholder) |
+| Demand charge c_d | **$27.5/kW-month, sourced**: Eversource G-3 2024, $14.64 distribution + $12.87 transmission |
 | Chiller capex | $250/kW_th, 20 yr, 7 % → annualised with CRF |
-| PCM cost | paraffin $5/kg, salt hydrate $2/kg (placeholders) |
+| PCM cost | paraffin $5/kg, salt hydrate $2/kg (assumed formulated price; raw chemical is $0.03–0.19/kg salt hydrate, $1–20/kg paraffin, ORNL 2021) |
 | PCM life / discount | 15 yr / 7 % |
 
 ## Rules
 1. **Honesty over polish.** Every number shown is either sourced (cite it) or labelled *assumed*. Never present
-   synthetic data as measured. Keep Ritwik's warning banners for the thermal tab.
+   synthetic data as measured.
 2. **Small diffs.** Reuse `materials.py` and `Config`; no new dependencies; no abstractions nobody asked for.
 3. **Tests for new logic**, at minimum: energy balance closes; PCM with zero mass equals baseline;
    PCM total cost <= baseline (s = 0 is feasible); `E` stays within bounds.
@@ -95,10 +95,10 @@ python -m venv .venv && .venv/Scripts/python -m pip install -r requirements.txt 
   can be tiny. That is a real result, not a bug; the UI must expose panels per MW and thickness.
 
 ## Findings that shape the demo (from a 192-run scan, 2024 data)
-- **Boston as built** (free cooling on, RT35HC, 50 mm, 100 panels/MW): saving $31/yr on ~$418k (0.01 %). The tower
+- **Boston as built** (free cooling on, RT35HC, 50 mm, 100 panels/MW): saving $40/yr on ~$548k (0.01 %). The tower
   makes 27 °C water alone for 8,531 of 8,784 h, so there is almost no chiller energy to shift.
-- **PCM showcase** (chiller plant without economiser, Na2SO4·10H2O, 20 mm, 500 panels/MW, $15/kW-month, no graphite):
-  saving $4,451/yr (0.9 %), chiller -57 kW, payback 4.8 yr, break-even $2.91/kg vs $2/kg assumed price.
+- **PCM showcase** (chiller plant without economiser, Na2SO4·10H2O, 20 mm, 500 panels/MW, $27.5/kW-month, no graphite):
+  saving $6,209/yr (1.0 % of ~$612k), chiller -57 kW, payback 3.1 yr, break-even $4.01/kg vs $2/kg assumed price.
 - What makes PCM work: salt hydrates (higher k and latent heat), **thin** panels (faster charging), enough area,
   a chiller-dependent plant, a real demand charge. Graphite helps but is hypothetical; label it so.
 - **Never tune or hide numbers to favour PCM.** Favouring PCM means presenting it first and showing the real
@@ -106,7 +106,7 @@ python -m venv .venv && .venv/Scripts/python -m pip install -r requirements.txt 
 
 ## pcm/annual.py interface (the UI must use only this)
 ```python
-from pcm.annual import Params, PRESETS, load_year, run, hottest_week, monthly_costs
+from pcm.annual import Params, PRESETS, load_year, run, peak_week, hottest_week
 df = load_year()                       # once at app start
 r = run(df, Params(**kwargs))          # ~0.5 s
 r["kpis"]   # dict: material, category, pcm_usd_per_kg, area_m2, mass_kg, e_max_kwh, p_charge_kw, p_regen_kw,
@@ -117,7 +117,8 @@ r["kpis"]   # dict: material, category, pcm_usd_per_kg, area_m2, mass_kg, e_max_
 r["hourly"] # DataFrame (UTC index): q_it_kw, twb_c, free_frac, kwe_per_kwth, price, pcm_kw, pcm_kwh,
             #   chiller_base_kw, chiller_pcm_kw, grid_base_kw, grid_pcm_kw
 r["params"] # dict of the Params used (for the assumptions card)
-hottest_week(r["hourly"]); monthly_costs(r["hourly"], Params(**kwargs))   # chart helpers
+peak_week(r["hourly"])  # 168 h around the annual chiller peak (proof chart)
+hottest_week(r["hourly"])   # hottest 168 h by wet-bulb (not used in the UI)
 ```
 Params fields: it_mw, material, graphite, thickness_m, panels_per_mw, economiser, approach_k, demand_usd_per_kw_month,
 chiller_usd_per_kw, pcm_usd_per_kg (None = category default), plus the plant constants in the table above.

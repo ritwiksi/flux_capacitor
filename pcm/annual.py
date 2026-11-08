@@ -26,15 +26,15 @@ class Params:
     supply_c: float = 27.0            # loop temperatures from thermal.Config
     return_c: float = 37.0
     h_w_m2k: float = 150.0
-    cop_ref: float = 6.0              # chiller COP at cop_ref_twb_c wet-bulb
+    cop_ref: float = 6.0              # water-cooled centrifugal: EIA 2023 App. A, 0.49-0.56 kW/ton (COP 6.3-7.2)
     cop_ref_twb_c: float = 20.0
-    cop_slope: float = 0.15           # COP lost per K of wet-bulb
+    cop_slope: float = 0.2            # COP lost per K of lift: ~3.7 %/K from CA Title 24 §110.2 curve (inferred)
     cop_min: float = 3.0
     economiser: bool = True
-    approach_k: float = 4.0           # cooling tower approach to wet-bulb
+    approach_k: float = 4.0           # tower approach: DOE FEMP 2024 data-center guide, 5-7 F (2.8-3.9 K)
     cop_free: float = 25.0            # free cooling: tower fans + pumps only
-    demand_usd_per_kw_month: float = 15.0
-    chiller_usd_per_kw: float = 250.0
+    demand_usd_per_kw_month: float = 27.5   # Eversource G-3 2024: $14.64 distribution + $12.87 transmission
+    chiller_usd_per_kw: float = 250.0       # EIA 2023: $560-590/ton chiller only (~$165/kW_th) + tower/pumps (assumed)
     chiller_life_yr: int = 20
     pcm_usd_per_kg: float | None = None   # None -> category default
     pcm_life_yr: int = 15
@@ -151,18 +151,8 @@ def run(df: pd.DataFrame, p: Params) -> dict:
 
 
 def hottest_week(hourly: pd.DataFrame) -> pd.DataFrame:
-    i = int(hourly.twb_c.rolling(168).mean().to_numpy().argmax())
-    return hourly.iloc[i - 167:i + 1]
-
-
-def monthly_costs(hourly: pd.DataFrame, p: Params) -> pd.DataFrame:
-    local = hourly.index - pd.Timedelta(hours=5)
-    g = hourly.assign(m=local.month).groupby("m")
-    out = pd.DataFrame({
-        f"{x}_usd": g.apply(lambda d, x=x: (d.price * d[f"grid_{x}_kw"]).sum() + d[f"grid_{x}_kw"].max() * p.demand_usd_per_kw_month)
-        for x in ("base", "pcm")})
-    out.index.name = "month"
-    return out
+    end = hourly.twb_c.rolling(168).mean().idxmax()   # idxmax skips the 167 leading NaNs; np.argmax would not
+    return hourly.loc[:end].tail(168)
 
 
 # Named starting points for the UI. Values come from a 192-run scan (see CLAUDE.md); nothing is tuned after the fact.
@@ -171,3 +161,10 @@ PRESETS = {
         material="na2so4", economiser=False, panels_per_mw=500, thickness_m=0.02),
     "Boston as built: free cooling on, paraffin defaults": dict(),
 }
+
+
+def peak_week(hourly: pd.DataFrame) -> pd.DataFrame:
+    """168 h around the annual baseline chiller peak: the hours where PCM avoids chiller capacity."""
+    i = hourly.index.get_loc(hourly.chiller_base_kw.idxmax())
+    start = min(max(i - 84, 0), len(hourly) - 168)
+    return hourly.iloc[start:start + 168]

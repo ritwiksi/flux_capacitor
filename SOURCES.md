@@ -10,7 +10,7 @@ The first milestone is a **research prototype**, not validated engineering desig
 
 ## Weather (annual model)
 - NSRDB GOES Conus v4.0.0 (NLR): https://developer.nlr.gov/docs/solar/nsrdb/nsrdb-GOES-conus-v4-0-0-download/ . Boston grid cell (42.36, -71.07), hourly (interval 60), calendar year 2024, fetched in **local standard time** (UTC-5, no daylight saving) and converted to UTC. Fields used: `Temperature` (dry-bulb, °C) and `Relative Humidity` (%). Raw download not committed.
-- Wet-bulb: Stull, R. (2011), *Wet-Bulb Temperature from Relative Humidity and Air Temperature*, Journal of Applied Meteorology and Climatology 50, 2267-2269, doi:10.1175/JAMC-D-11-0143.1. Empirical fit valid for roughly 5-99 % RH and -20 to 50 °C at sea-level pressure; reported errors within about -1 to +0.65 K.
+- Wet-bulb: Stull, R. (2011), *Wet-Bulb Temperature from Relative Humidity and Air Temperature*, Journal of Applied Meteorology and Climatology 50(11), 2267-2269 (citation verified via Crossref), doi:10.1175/JAMC-D-11-0143.1. Empirical fit valid for roughly 5-99 % RH and -20 to 50 °C at sea-level pressure; reported errors within about -1 to +0.65 K.
 
 ## Electricity price (annual model)
 - ISO-NE web services, hourly **day-ahead final LMP**, location 4008 `.Z.NEMASSBOST` (NEMA/Boston load zone): https://webservices.iso-ne.com/docs/v1.1/ . `LmpTotal` in $/MWh, converted to $/kWh. **Wholesale energy only**: no retail adder, capacity, transmission or delivery charges, so absolute annual costs understate a real bill. Raw downloads not committed (the service needs an ISO-NE account).
@@ -29,16 +29,19 @@ The first milestone is a **research prototype**, not validated engineering desig
 - 100 panels * 1 m² * 0.05 m = 5 m³ gross material volume; the real encapsulated volume would differ. The water reference capacity for 10°C sensible change is 58.06 kWh.
 
 ## Annual model assumptions
-Every value below is **assumed** (engineering placeholder, not sourced or calibrated). All are fields of `pcm.annual.Params`.
+Values below are **assumed** unless marked *sourced*; none is calibrated to a real plant. All are fields of `pcm.annual.Params`.
 - Loop supply / return 27 / 37 °C; fluid-side h 150 W/m²K; 100 panels per MW of IT, 1 m² face each (from the thermal lab `Config`).
-- Chiller COP: 6.0 at wet-bulb 20 °C, falling 0.15 per K of wet-bulb, floor 3.0.
-- Waterside economiser on; cooling-tower approach 4 K; free-cooling COP 25 (tower fans + pumps). Free-cooling fraction `f = clip((T_return - approach - T_wb) / (T_return - T_supply), 0, 1)`.
-- Demand charge $15/kW-month on the monthly peak of grid power (placeholder, not a utility tariff).
-- Chiller capex $250/kW_th, 20-year life, 7 % discount, annualised with the capital recovery factor.
-- PCM price: paraffin $5/kg, salt hydrate $2/kg (placeholders, not quotes). PCM life 15 years, 7 % discount.
+- Chiller COP: 6.0 at wet-bulb 20 °C, falling 0.2 per K, floor 3.0. Basis: EIA, *Updated Buildings Sector Appliance and Equipment Costs and Efficiencies*, March 2023, Appendix A p.125 (water-cooled centrifugal 0.49–0.56 kW/ton, COP 6.3–7.2; https://www.eia.gov/analysis/studies/buildings/equipcosts/pdf/appendix-a.pdf). Slope **inferred** (~3.7 %/K of lift) from the California Title 24 §110.2(a) off-rating curve. No source covers a 27 °C warm-water loop, so COP is conservative there.
+- Waterside economiser on; cooling-tower approach 4 K (DOE FEMP/NREL, *Best Practices Guide for Energy-Efficient Data Center Design*, July 2024, §5.3.2: "5°F to 7°F approach", i.e. 2.8–3.9 K; heat-exchanger approach not added); free-cooling COP 25, i.e. 0.04 kW/kW (assumed; NREL ESIF's chiller-less warm-water plant reports annual PUE ~1.036). Free-cooling fraction `f = clip((T_return - approach - T_wb) / (T_return - T_supply), 0, 1)`.
+- Demand charge **$27.5/kW-month (sourced)** on the monthly peak of grid power: Eversource Eastern Massachusetts G-3 Large General Service, 2024 (distribution $14.64/kW + transmission $12.87/kW; rate summary effective Jul/Aug 2024, archived at web.archive.org). Billing-demand rules (kVA basis, ratchets) not modelled; G-2 would be $31.34.
+- Chiller capex $250/kW_th (assumed whole plant; EIA 2023 App. A gives $560–590/ton ≈ $165/kW_th for the chiller alone, life 25 yr), 20-year life, 7 % discount, annualised with the capital recovery factor.
+- PCM price: paraffin $5/kg, salt hydrate $2/kg (**assumed** formulated-product prices, not quotes). Raw bulk chemical, autumn 2020: CaCl2·6H2O $0.10–0.19/kg, Na2SO4·10H2O $0.03–0.09/kg, octadecane/icosane $1–20/kg (Hirschey et al., ORNL, Purdue High Performance Buildings Conf. 2021, https://www.osti.gov/servlets/purl/1813229); excludes nucleators, thickeners and encapsulation. PCM life 15 years, 7 % discount.
 - PCM power limit from conduction only: `UA = A / (1/h + (thickness/2)/k)`; charge `<= UA·(T_return - T_melt)`, regeneration `<= UA·(T_melt - T_supply)`, `T_melt` = midpoint of the melt range. Half-thickness is a mean melt-front depth; no natural convection, hysteresis or partial-melt dynamics.
 - Storage capacity `E_max = m·(L + cp·(T_return - T_supply))`, cyclic over the year; perfect foresight of load, weather and price in the LP.
 - All IT power becomes heat (`Q_IT = P_IT`).
 
 ## Explicitly not implemented
 Now implemented in the annual model (with the assumptions above, not calibrated): weather integration, hourly wholesale prices with a demand charge, LP dispatch, and PCM / chiller capex. Still missing: cooling-plant calibration against a real chiller and tower, retail tariffs (delivery, capacity, real demand-charge schedules), battery storage (BESS) comparison, embodied and operational CO2e, carbon-price scenarios, replacement/maintenance costs, multi-year DCF, experimentally measured graphite effectiveness, repeated-cycle material degradation, salt-hydrate supercooling and phase separation. These should be separate validated modules in later PRs.
+
+## Literature comparison
+- Skach, Arora, Hsu, Li, Tullsen, Tang, Mars, "Thermal Time Shifting: Leveraging Phase Change Materials to Reduce Cooling Costs in Warehouse-Scale Computers", ISCA 2015 (https://cseweb.ucsd.edu/~tullsen/isca15.pdf): "PCM can reduce the necessary cooling system size by up to 12% without impacting peak throughput" (simulation, paraffin inside servers, air cooling). Our showcase avoids ~57 kW of 1,000 kW chiller capacity (5.7 %) with a different system (rack-adjacent panels on a liquid loop), so the numbers are not directly comparable.

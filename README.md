@@ -2,10 +2,17 @@
 
 **Research prototype: thermal storage comparison for liquid-cooled data centers.**
 
-A Shiny for Python app with two tabs:
+A single-page Shiny for Python app that compares a baseline datacenter cooling plant with the same plant plus PCM, over every hour of 2024 in Boston, and reports the **annual cost** result. See [Annual cost model](#annual-cost-model-boston-2024).
 
-- **Annual cost (Boston 2024)**: a baseline datacenter cooling plant vs the same plant with PCM, over every hour of 2024, reporting annual cost, cooling energy, peak demand, PCM capex, payback and break-even PCM price. See [Annual cost model](#annual-cost-model-boston-2024).
-- **Thermal lab**: compares two identically sized, rack-adjacent thermal storage module arrays: **water (sensible heat)** and a selected **organic/inorganic PCM**. It estimates time-varying heat absorption, regeneration, and PCM melt fraction from a full calendar-month IT-power CSV. This tab does **not** report electrical savings, operating cost, payback, or CO2e.
+- **Configure** (sidebar): scenario ("Chiller plant (PCM showcase)", the default, or "Boston with free cooling"), PCM material, thickness, datacenter size, Run. Assumed values (panels per MW, PCM price, demand charge, chiller capex, tower approach, hypothetical nano-graphite) sit in a collapsed "Advanced (assumed values)" section.
+- **Result**: break-even PCM price with a pays / does-not-pay verdict against the assumed price, plus annual saving, payback and chiller capacity avoided.
+- **Proof**: the peak week of 2024 (the 168 h around the annual chiller peak), hourly (chiller load with and without PCM, PCM stored energy), and an "Assumptions and sources" section tagging every parameter as input, sourced or assumed.
+
+The UI spec is in [docs/UI_SCOPE.md](docs/UI_SCOPE.md).
+
+## Thermal lab model (no UI in the demo)
+
+The earlier **Thermal lab** tab was removed from the UI for the demo; its model (`pcm/thermal.py`), the month importer, the tests and the SOURCES.md entries remain, and the tab can be restored from git history. It compares two identically sized, rack-adjacent thermal storage module arrays: **water (sensible heat)** and a selected **organic/inorganic PCM**. It estimates time-varying heat absorption, regeneration, and PCM melt fraction from a full calendar-month IT-power CSV. It does **not** report electrical savings, operating cost, payback, or CO2e.
 
 ## Run
 
@@ -16,7 +23,7 @@ pip install -r requirements.txt
 shiny run --reload app.py
 ```
 
-The thermal lab defaults to a clearly labeled **synthetic UI demonstration profile** until you upload a real CSV. To use the published NLR ESIF data:
+The app needs only the committed `data/boston_2024_hourly.csv`. The notes below apply to the thermal-lab model (`pcm/thermal.py`), which used a clearly labeled **synthetic demonstration profile** until a real month CSV was uploaded. To use the published NLR ESIF data:
 
 1. Download the **ESIF DC Power Metrics Timeseries Data (Zipped CSV)** from https://data.nlr.gov/submissions/300 .
 2. Convert the downloaded zip to a complete hourly month:
@@ -25,7 +32,7 @@ The thermal lab defaults to a clearly labeled **synthetic UI demonstration profi
    python -m scripts.prepare_esif /path/to/esif.influx.buildingData.PUE.combined.csv.zip data/esif_month.csv
    ```
 
-3. Upload `data/esif_month.csv` through the UI.
+3. Feed `data/esif_month.csv` to the thermal model (the upload UI was part of the removed tab).
 
 The converter selects the **earliest fully observed UTC calendar month**, avoiding cherry-picking. If no complete month is available it raises an error rather than inventing missing load.
 
@@ -67,10 +74,10 @@ python -m scripts.prepare_boston_2024 --weather W.csv --esif E.csv --isone DIR
 
 ### Presets and findings
 
-The UI opens on the PCM showcase; the as-built case is one click away. Results from a 192-run scan on the 2024 data (nothing tuned after the fact):
+The UI opens on the "Chiller plant (PCM showcase)" scenario; "Boston with free cooling" (as built) is one click away. Results from a 192-run scan on the 2024 data (nothing tuned after the fact):
 
-- **Boston as built** (free cooling on, RT35HC, 50 mm, 100 panels/MW): saving **$31/yr on ~$418k (0.01 %)**. The tower makes 27 °C water alone for 8,531 of 8,784 h, so there is almost no chiller energy to shift.
-- **PCM showcase** (chiller plant without economiser, Na2SO4·10H2O, 20 mm, 500 panels/MW, $15/kW-month, no graphite): saving **$4,451/yr (0.9 %)**, chiller -57 kW, payback 4.8 yr, break-even $2.91/kg vs $2/kg assumed price.
+- **Boston as built** (free cooling on, RT35HC, 50 mm, 100 panels/MW): saving **$40/yr on ~$548k (0.01 %)**. The tower makes 27 °C water alone for 8,531 of 8,784 h, so there is almost no chiller energy to shift.
+- **PCM showcase** (chiller plant without economiser, Na2SO4·10H2O, 20 mm, 500 panels/MW, $27.5/kW-month, no graphite): saving **$6,209/yr (1.0 %)**, chiller -57 kW, payback 3.1 yr, break-even $4.01/kg vs $2/kg assumed price.
 
 What makes PCM work: salt hydrates (higher conductivity and latent heat), **thin** panels (faster charging), enough area, a chiller-dependent plant, and a real demand charge. Graphite helps but is **hypothetical**. With default geometry, paraffin's low conductivity (0.2 W/mK) limits PCM power to a few kW per 100 m²; that is a real result, not a bug.
 
@@ -78,7 +85,7 @@ What makes PCM work: salt hydrates (higher conductivity and latent heat), **thin
 
 ```bash
 python -m pytest -q
-shiny run --reload app.py   # both tabs
+shiny run --reload app.py   # single page
 ```
 
 Detailed distinctions between source-derived inputs and research assumptions are in [SOURCES.md](SOURCES.md).

@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from pcm.annual import Params, load_year, run, wet_bulb_c
+from pcm.annual import Params, hottest_week, load_year, run, wet_bulb_c
 
 DF = load_year()
 
@@ -36,3 +36,16 @@ def test_economiser_reduces_cooling_energy():
     off = run(DF, Params(panels_per_mw=0, economiser=False))["kpis"]
     assert off["free_hours_full"] == 0 and on["free_hours_full"] > 0
     assert on["base"]["cooling_kwh"] < off["base"]["cooling_kwh"]
+
+
+def test_hottest_week_is_a_full_week():
+    w = hottest_week(run(DF, Params(panels_per_mw=0))["hourly"])
+    assert len(w) == 168 and w.twb_c.notna().all()
+
+
+def test_peak_week_contains_annual_chiller_peak():
+    from pcm.annual import PRESETS, peak_week
+    h = run(DF, Params(**next(iter(PRESETS.values()))))["hourly"]
+    w = peak_week(h)
+    assert len(w) == 168 and h.chiller_base_kw.idxmax() in w.index
+    assert w.chiller_pcm_kw.max() < w.chiller_base_kw.max()   # PCM shaves the peak it is sized against
