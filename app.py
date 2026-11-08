@@ -70,8 +70,9 @@ econ_inputs_card = ui.card(
 )
 
 METHOD_MD = """
-**What is compared.** The PCM array against the water array from the Thermal tab (same panels, same
-volume, same dispatch). *Positive NPV = PCM beats water.*
+**What is compared.** The PCM array against the water array from the Thermal tab (same panels,
+volume and controller algorithm, but independently chosen feasible thresholds in optimized mode).
+*Positive NPV = PCM beats water under these modeling assumptions*, not versus no storage.
 
 **Value streams**
 
@@ -363,7 +364,8 @@ def server(input, output, session):
             sens = sensitivity(d["result"], d["material"], d["cfg"], inp, synthetic=d["synthetic"])
         except ValueError as exc:
             return {"error": str(exc)}
-        return {"res": res, "inp": inp, "sens": sens, "material": d["material"]}
+        return {"res": res, "inp": inp, "sens": sens, "material": d["material"],
+                "dispatch": d["dispatch"], "peak": d["peak"]}
 
     def _econ_ready():
         e = econ()
@@ -379,6 +381,16 @@ def server(input, output, session):
         critical_keys = ("EXCEEDS", "RAISES", "water's dispatch spike", "synthetic")
         critical = [w for w in e["res"].warnings if any(k in w for k in critical_keys)]
         alerts = "".join(f'<div class="alert alert-danger py-2 mb-2">{escape(w)}</div>' for w in critical)
+        if e["dispatch"] == "optimized":
+            alerts += (
+                '<div class="alert alert-warning py-2 mb-2">'
+                'Optimized mode uses full-month foresight and starts at 27°C. '
+                'Ending storage energy can differ from the starting state; '
+                'chiller capacity and demand-charge credits have NOT been '
+                'validated for repeated months. Read the terminal-heat '
+                'adjustment caveat in the README before quoting an NPV.'
+                '</div>'
+            )
         items = "".join(f"<li>{escape(w)}</li>" for w in e["res"].warnings)
         return ui.HTML(alerts + f'<details class="mb-3"><summary><b>All limitations that apply to these numbers ({len(e["res"].warnings)})</b></summary>'
                        f'<ul class="small mt-2">{items}</ul></details>')
