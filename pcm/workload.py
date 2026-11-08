@@ -13,7 +13,13 @@ def normalize_month(raw: pd.DataFrame) -> pd.DataFrame:
     df = raw.rename(columns={"ts": "timestamp"}).copy()
     if not {"timestamp", "it_power_kw"}.issubset(df.columns):
         raise ValueError("CSV needs timestamp (or ts) and it_power_kw columns.")
-    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
+    # NLR/ESIF writes JS-style stamps, e.g. "Mon Nov 09 2015 20:00:01 GMT-0700 (Mountain Standard Time)".
+    ts = df["timestamp"]
+    if ts.dtype == object:
+        ts = ts.replace(r"\s*\([^)]*\)\s*$", "", regex=True)
+    parsed = pd.to_datetime(ts, utc=True, errors="coerce")
+    esif = pd.to_datetime(ts, format="%a %b %d %Y %H:%M:%S GMT%z", utc=True, errors="coerce")
+    df["timestamp"] = parsed.fillna(esif)
     df["it_power_kw"] = pd.to_numeric(df["it_power_kw"], errors="coerce")
     df = df.dropna(subset=["timestamp", "it_power_kw"])
     df = df.loc[df["it_power_kw"] >= 0]
