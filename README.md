@@ -40,7 +40,8 @@ timestamp,it_power_kw
 
 - Supply / return: **27°C / 37°C** (assumed), 100 panels, each 1 m² face and 50 mm thickness → **5 m³ gross storage volume**.
 - 1D PCM conduction + enthalpy/melting fraction; a mixed sensible-water comparator.
-- Identical geometry and daily load-ranked dispatch heuristic for both.
+- **Default:** independently optimize each system's lowest *feasible hourly thermal peak* under the same 1D physics and 27/37°C boundary conditions. Targets are found by bisection; PCM and water may receive different schedules. This is a full-month perfect-foresight benchmark, **not** a weather-based cooling controller.
+- **Legacy mode:** identical daily top-8/bottom-8 load-ranked hours, with the optional regeneration cap preserved.
 - Organic paraffin and inorganic salt-hydrate materials; graphite toggle is **hypothetical** pending measurements.
 
 ## Economics tab (exploratory)
@@ -50,9 +51,9 @@ Compares the PCM array against the **water** array from the thermal run (same pa
 Every input carries a provenance badge: **sourced**, **range-sourced**, **assumption**, or **placeholder (no source found)**. The headline outputs are break-even values rather than a single savings figure:
 
 - **Break-even PCM price** and **break-even containment premium ($/m²)**: how much extra panel cost the modeled benefit can absorb. Panel hardware, heat exchangers and installation are assumed identical for PCM and water; corrosive salt hydrates will cost more, so this *favours PCM*.
-- **Peak vs no storage** is shown next to peak vs water. The milestone-1 top-8/bottom-8 heuristic let regeneration in low-load hours create new cooling peaks (observed at 1,000 panels on the synthetic profile, where PCM "beat" water only because water spiked more). The sidebar option *Cap regeneration* (on by default) limits release to the headroom under the month's no-storage peak, so neither system can end up worse than no storage. **Side effect: at large panel counts the capped regeneration refills that headroom up to the old peak, so peak shave there is zero by construction.** A threshold peak-shaving dispatch (target a lower peak, charge only above it) is the proper fix and is not built yet. When PCM or water exceeds the no-storage peak (cap off) the app raises a red warning.
+- **Peak vs no storage** is shown next to peak vs water. The new default controller picks a target cooling peak below the no-storage peak and charges only in hours above it; regeneration occurs only within the headroom beneath it. Each store is optimized independently, with the same geometry, load, and boundary temperatures. The original heuristic and cap can be replayed by switching dispatch modes. With the old uncapped mode, a new regeneration-driven cooling peak can still appear; the app warns about it.
 
-The default workload is synthetic. Do not quote its economics. Sources and limits: [SOURCES.md](SOURCES.md).
+**Critical limitation:** The monthly benchmark starts each store at 27°C, but does not enforce the same temperature/enthalpy at month end. The UI discloses remaining stored heat. It cannot establish repeatable yearly peak relief or justify reducing installed chiller size, especially when residual heat persists. Energy-cost comparisons use a simplified terminal heat adjustment, but that adjustment is not reflected in the peak/capacity estimate. Economic results remain sensitivity illustrations, *not bankable savings*. The default workload is synthetic. Do not quote its economics. Sources and limits: [SOURCES.md](SOURCES.md).
 
 ## Deploying to a shareable link
 
@@ -67,14 +68,17 @@ rsconnect deploy shiny . --name NAME --title flux-capacitor --entrypoint app:app
 
 This deploy path has **not been tested** from this repository (it needs your account credentials). Check your plan's active-hour and idle-sleep limits before a demo, and open the link a few minutes beforehand so it is awake. `requirements.txt` also lists `pytest` and `scipy`, which the app does not need and which only lengthen the build.
 
-## Validation
+## Validation and observed runtime
 
 ```bash
 python -m pytest -q
+python -m scripts.benchmark_peak
 ```
+
+The benchmark measures one full synthetic month with 100 panels on your machine; it prints its observed runtime rather than guessing or advertising a fake progress percentage. The Shiny app also shows actual completed runtime. A client-side animated SVG sketch draws server racks and cooling piping while computing; it is a loading indicator, **not** a rendering of the simulated physics.
 
 Detailed distinctions between source-derived inputs and research assumptions are in [SOURCES.md](SOURCES.md).
 
 ## Next milestone
 
-Replace the top-8/bottom-8 heuristic with a threshold peak-shaving dispatch (choose a target peak below the no-storage peak, charge only in hours above it, regenerate within the headroom under it), add a documented temperature-dependent heat-rejection plant and a fully sourced tariff, and replace the placeholder chiller and containment costs with vendor quotes. Only then treat the five-year economics as more than exploratory. Emissions are still not modelled.
+Validate month-to-month cyclic recovery (the end-state must return to its starting energy before crediting a repeatable peak reduction), replace month-ahead foresight with an implementable predictive controller, then add a documented temperature-dependent heat-rejection plant and fully sourced tariff. Replace placeholder chiller, containment, pump and installation costs with vendor quotes. Only then treat the five-year economics as more than exploratory. Emissions are still not modelled.
