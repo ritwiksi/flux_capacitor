@@ -99,6 +99,8 @@ app_ui = ui.page_sidebar(
         ui.input_checkbox("graphite", "Hypothetical nano-graphite enhancement", value=False),
         ui.input_numeric("panels", "Number of identical panels", value=100, min=1, max=10000),
         ui.input_slider("thickness", "Panel thickness (mm)", min=20, max=100, value=50, step=5),
+        ui.input_checkbox("cap_regen", "Cap regeneration so storage cannot create new cooling peaks", value=True),
+        ui.p("Idealization: uses the month's peak IT load in advance, same rule for water and PCM. Off reproduces the milestone-1 heuristic.", class_="small text-muted"),
         ui.input_action_button("run", "Run month simulation", class_="btn-primary w-100"),
         ui.hr(),
         ui.p("Fixed temperatures: 27 °C supply / 37 °C return. Panel face: 1 m².", class_="small"),
@@ -181,7 +183,8 @@ def server(input, output, session):
                 label = "Synthetic demo (not measured)"
             load = normalize_month(raw)
             mat = get_material(input.material(), input.graphite())
-            cfg = Config(panels=int(input.panels()), thickness_m=float(input.thickness())/1000)
+            cfg = Config(panels=int(input.panels()), thickness_m=float(input.thickness())/1000,
+                         cap_regeneration=bool(input.cap_regen()))
             result = simulate(load, mat, cfg)
             return {"result": result, "summary": summarize(result), "material": mat, "label": label,
                     "cfg": cfg, "synthetic": not upload}

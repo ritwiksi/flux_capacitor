@@ -50,7 +50,7 @@ Compares the PCM array against the **water** array from the thermal run (same pa
 Every input carries a provenance badge: **sourced**, **range-sourced**, **assumption**, or **placeholder (no source found)**. The headline outputs are break-even values rather than a single savings figure:
 
 - **Break-even PCM price** and **break-even containment premium ($/m²)**: how much extra panel cost the modeled benefit can absorb. Panel hardware, heat exchangers and installation are assumed identical for PCM and water; corrosive salt hydrates will cost more, so this *favours PCM*.
-- **Peak vs no storage** is shown next to peak vs water. Under the current top-8/bottom-8 heuristic, regeneration in low-load hours can create new cooling peaks (observed at 1,000 panels on the synthetic profile). When PCM or water exceeds the no-storage peak the app raises a red warning, because beating water then does not mean saving anything.
+- **Peak vs no storage** is shown next to peak vs water. The milestone-1 top-8/bottom-8 heuristic let regeneration in low-load hours create new cooling peaks (observed at 1,000 panels on the synthetic profile, where PCM "beat" water only because water spiked more). The sidebar option *Cap regeneration* (on by default) limits release to the headroom under the month's no-storage peak, so neither system can end up worse than no storage. **Side effect: at large panel counts the capped regeneration refills that headroom up to the old peak, so peak shave there is zero by construction.** A threshold peak-shaving dispatch (target a lower peak, charge only above it) is the proper fix and is not built yet. When PCM or water exceeds the no-storage peak (cap off) the app raises a red warning.
 
 The default workload is synthetic. Do not quote its economics. Sources and limits: [SOURCES.md](SOURCES.md).
 
@@ -77,4 +77,4 @@ Detailed distinctions between source-derived inputs and research assumptions are
 
 ## Next milestone
 
-Replace the top-8/bottom-8 heuristic with a dispatch that cannot create new cooling peaks, add a documented temperature-dependent heat-rejection plant and a fully sourced tariff, and replace the placeholder chiller and containment costs with vendor quotes. Only then treat the five-year economics as more than exploratory. Emissions are still not modelled.
+Replace the top-8/bottom-8 heuristic with a threshold peak-shaving dispatch (choose a target peak below the no-storage peak, charge only in hours above it, regenerate within the headroom under it), add a documented temperature-dependent heat-rejection plant and a fully sourced tariff, and replace the placeholder chiller and containment costs with vendor quotes. Only then treat the five-year economics as more than exploratory. Emissions are still not modelled.
