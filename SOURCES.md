@@ -42,3 +42,14 @@ Model limits: one simulated month is scaled to a year; billed demand is assumed 
 
 ## Explicitly not implemented
 Cooling plant COP/free-cooling performance calibration, weather integration, time-of-use/demand tariffs in the UI, real-time/forecast-constrained dispatch and periodic end-state optimization, installed-cost build-up (heat exchangers, encapsulation, installation), replacement/maintenance, embodied CO2e, operational emissions, U.S. hypothetical carbon-price scenario, graphite experimentally measured effectiveness, repeated-cycle material degradation. These should be separate validated modules in later PRs.
+
+
+## New plant, emissions and cyclic-audit evidence (2026-11-08)
+
+ASHRAE's [2021 liquid cooling reference card](https://www.ashrae.org/file%20library/technical%20resources/bookstore/supplemental%20files/therm-gdlns-5th-r-e-refcard.pdf) supports 27 C as a W27 facility-water supply reference and mentions chiller/economizer equipment. [ENERGY STAR](https://www.energystar.gov/products/data_center_equipment/16-more-ways-cut-energy-waste-data-center/consider-water-side-economizers) documents the general possibility of water-side economizers in suitable ambient conditions. [DOE Best Practices Guide for Energy-Efficient Data Center Design](https://www.energy.gov/sites/default/files/2024-07/best-practice-guide-data-center-design.pdf) discusses the need for climate-specific analysis and variable flow pumping. **None provides this app's performance curve.**
+
+Every plant coefficient is an **assumed scenario**, not measured or sourced equipment performance: dry-cooler approach 4 K, economizer ramp 5 K, nominal COP 4.5 at 25 C, COP slope -0.065 per K (bounded 2.5..6), fan electricity 2.5% of heat rejection, shared pump draw 8 kW, storage circulation 0.001 kW/panel while active, synthetic ambient mean 27 C and daily swing 6 C. The model omits true chiller/tower part load, condenser heat, hydraulic limits and design redundancy.
+
+The illustrative default PCM/water container prices are $120/$65 per square metre, shared installation $60/m2, maintenance 2.5%/1.5% of installed cost annually, replacement 8/15 years. Emission coefficients (grid 0.4 kgCO2e/kWh, PCM 2 kgCO2e/kg, water 0.002 kgCO2e/kg) are **unverified placeholders**; no equipment manufacturing emissions, cradle-to-grave LCA or actual site utility tariff is claimed. The optional carbon shadow price applies only to operating emissions, not as a real tax.
+
+The periodic audit compares all PCM-cell enthalpy states across consecutive copies of one month (L1 drift threshold 0.2 kWhth) and water sensible storage (0.2 kWhth), with storage energy conservation residual under 0.01 kWhth. A case that fails convergence or thermal peak never receives chiller capacity credit in the new lifecycle module. The original Economics tab is retained for reproducibility only and remains a legacy *thermal-proxy* scenario, including its terminal-load caveat.
