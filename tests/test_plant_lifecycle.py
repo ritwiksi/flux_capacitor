@@ -130,3 +130,13 @@ def test_cash_flow_replacement_is_counted_only_in_due_year():
     out = evaluate_lifecycle(plant, MATERIALS["cacl2"], Config(panels=10), options)
     assert len(out.cashflows) == 6
     assert not np.isnan(out.cashflows.net_savings_usd).any()
+
+
+def test_hourly_thermal_and_electric_outputs_join_for_csv_export():
+    frame = plant_input()
+    plant = simulate_plant(frame, PlantConfig(), panels=100)
+    joined = frame.merge(plant, on="timestamp", validate="one_to_one",
+                         suffixes=("_thermal", "_plant"))
+    assert len(joined) == len(frame)
+    assert joined.pcm_cooling_electric_kw.notna().all()
+    assert joined.water_plant_thermal_kw.notna().all()
