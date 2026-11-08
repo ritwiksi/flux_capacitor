@@ -37,7 +37,7 @@ def normalize_month(raw: pd.DataFrame) -> pd.DataFrame:
                                   .sort_index().resample("1h").mean().reindex(idx))
                 if weather_hourly.notna().all() and weather_hourly.between(-80, 65).all():
                     out["outside_air_temp_c"] = weather_hourly.values
-                elif weather_hourly.notna().any():
+                else:
                     raise ValueError("Weather column is incomplete or out of range; provide complete outside_air_temp_c or omit it.")
             return out
     raise ValueError("No complete calendar month found. Supply a full month of hourly IT power readings (UTC); missing hours are not filled.")
