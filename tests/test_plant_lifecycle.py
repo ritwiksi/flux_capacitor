@@ -92,7 +92,14 @@ def test_lifecycle_npv_cash_flow_demand_and_suppressed_capacity_credit():
     credited = evaluate_lifecycle(plant, MATERIALS["cacl2"], Config(panels=100),
                                   opts, pcm_cycle_verified=True, water_cycle_verified=True)
     assert credited.chiller_credit_usd > 0
-    assert credited.npv_usd == pytest.approx(out.npv_usd + credited.chiller_credit_usd)
+    annuity = sum(1/(1+opts.discount_rate)**year for year in range(1, opts.years+1))
+    verified_annual_bill_savings = 12 * (out.water_month_bill_usd - out.pcm_month_bill_usd)
+    assert credited.npv_usd == pytest.approx(
+        out.npv_usd + credited.chiller_credit_usd + verified_annual_bill_savings * annuity
+    )
+    assert out.pcm_total_5y_kgco2e - out.water_total_5y_kgco2e == pytest.approx(
+        out.pcm_embodied_kgco2e - out.water_embodied_kgco2e
+    )
 
 
 def test_tariff_demand_charge_uses_facility_peak_not_cooling_peak():
