@@ -99,3 +99,8 @@ The **Plant & lifecycle** tab introduces a scenario-only energy/emissions and fi
 ### Next research improvements
 
 Build a forecast-constrained controller without perfect monthly foresight, model a physically complete flow-limited warm-water loop, validate against plant data and seasonal weather, perform mesh/timestep convergence, verify salt-hydrate degradation/hysteresis, and replace scenario values with source-verified industrial tariffs and LCA factors. Before a live presentation, perform a manual browser test and deploy to an authorized Shiny host.
+
+
+### Conservative annualization rule
+
+The new lifecycle model only annualizes water-versus-PCM electricity-bill differences when **both** systems satisfy the repeated-month state and peak-feasibility audit. If either fails, the monthly scenario still displays its diagnostic electricity profile, but discounted cash flows carry **no repeatable energy or demand savings**. Unverified annual operational CO2e comparisons use the same no-storage reference for both cases so that unfinished stored heat cannot produce an artificial emissions benefit. Maintenance, media CAPEX, and embodied media emissions remain counted. The original legacy Economics tab does not enforce this rule and must not be relied on for annual claims.
