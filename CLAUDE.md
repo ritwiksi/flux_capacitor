@@ -20,7 +20,8 @@ Detailed UI spec: [docs/UI_SCOPE.md](docs/UI_SCOPE.md). Sources and provenance: 
 | Electricity price | ISO-NE day-ahead final LMP, load zone 4008 `.Z.NEMASSBOST`. **Wholesale only, no retail adder.** |
 | Cooling | Conventional water cooling: water-cooled chiller + cooling tower **with waterside economiser (free cooling)**, driven by NSRDB wet-bulb |
 | Scenarios | Baseline (no PCM) vs PCM. **No BESS, no other cities, no CO2** in v1. |
-| Dispatch | Linear program over the full year (`scipy.optimize.linprog`, HiGHS). No new dependencies. |
+| Dispatch | Linear program over the full year (`scipy.optimize.linprog`, HiGHS). No new dependencies. ~0.5 s per run. |
+| Framing | **PCM-first.** Open the UI on the PCM showcase preset; always show the free-cooling preset one click away. |
 
 ## Repo map
 ```
@@ -37,17 +38,17 @@ tests/                 pytest; every new module gets tests
 ## The annual model (pcm/annual.py)
 - Hourly, 8784 h, Δt = 1 h, units **kW and kWh** (match the existing code), thermal vs electric always labelled.
 - `Q_IT = P_IT` (all IT power becomes heat). PCM net heat in `s[t]` (kW_th, + = melting/absorbing).
-- Chiller thermal load `q_c = Q_IT - s >= 0`; chiller electricity `q_c / COP(T_wb)`.
+- Heat to the cooling plant `q_c = Q_IT - s >= 0`; cooling electricity `k[t]·q_c` (k = free-cooling mix, below).
 - PCM energy `E[t+1] = E[t] + s[t]`, `0 <= E <= E_max`, cyclic `E[end] = E[0]`.
 - Power limits from conduction (geometry from `thermal.Config`, properties from `materials.py`):
   `UA = A / (1/h + (thickness/2)/k)`; charge `s <= UA·(T_return - T_melt)`; regen `-s <= UA·(T_melt - T_supply)`.
 - `E_max = m·(L + cp·(T_return - T_supply))`, `m = ρ·A·thickness`, `A = panels_per_MW · MW · 1 m²`.
-- Objective: `Σ price·P_grid + Σ_months c_d·D_m + c_cap·C`, with `D_m >= P_grid[t]` in month m, `C >= q_c[t]`,
-  `P_grid = P_IT + q_c/COP`. Baseline = same with `s = 0`.
+- Objective: `Σ price·P_grid + Σ_months c_d·D_m + c_cap·C`, with `D_m >= P_grid[t]` in month m, `C >= (1-f)·q_c[t]`,
+  `P_grid = P_IT + k·q_c`. Baseline = same with `s = 0`.
 - Wet-bulb from NSRDB T and RH: Stull (2011) formula.
 - Free cooling fraction per hour (known from weather, so the LP stays linear):
   `f = clip((T_return - approach - T_wb) / (T_return - T_supply), 0, 1)`; f = 1 means the tower alone makes supply water.
-  Cooling electricity per kW_th = `f/COP_free + (1-f)/COP_chiller(T_wb)`. Chiller capacity constraint uses `(1-f)·q_c`.
+  `k = f/COP_free + (1-f)/COP_chiller(T_wb)` kW_e per kW_th.
 
 ### Default parameters: all **assumed** unless stated; every one must be editable or listed in the UI
 | Parameter | Default |
@@ -88,7 +89,35 @@ python -m venv .venv && .venv/Scripts/python -m pip install -r requirements.txt 
 - ESIF `ts` looks like `Mon Nov 09 2015 20:00:01 GMT-0700 (Mountain Standard Time)`; `pd.to_datetime` returns NaT,
   so `normalize_month` rejects real ESIF files. Fix: strip the `(...)` suffix and parse with
   `format="%a %b %d %Y %H:%M:%S GMT%z"`.
-- ESIF 2024: 96.7 % hourly coverage, 14 gaps (longest 90 h), 5 glitch readings < 300 kW; mean 2.7 MW, peak 3.9 MW.
-  Gaps filled from the same hour ±1 week and flagged.
+- ESIF 2024: 96.7 % hourly coverage, 14 gaps (longest 90 h) plus glitch readings < 10 % of median; 298 hours filled
+  from the same hour ±1 week and flagged in `it_filled`. Mean 2.7 MW, peak 3.9 MW.
 - With default geometry, paraffin's low conductivity (0.2 W/mK) limits PCM power to a few kW per 100 m², so savings
   can be tiny. That is a real result, not a bug; the UI must expose panels per MW and thickness.
+
+## Findings that shape the demo (from a 192-run scan, 2024 data)
+- **Boston as built** (free cooling on, RT35HC, 50 mm, 100 panels/MW): saving $31/yr on ~$418k (0.01 %). The tower
+  makes 27 °C water alone for 8,531 of 8,784 h, so there is almost no chiller energy to shift.
+- **PCM showcase** (chiller plant without economiser, Na2SO4·10H2O, 20 mm, 500 panels/MW, $15/kW-month, no graphite):
+  saving $4,451/yr (0.9 %), chiller -57 kW, payback 4.8 yr, break-even $2.91/kg vs $2/kg assumed price.
+- What makes PCM work: salt hydrates (higher k and latent heat), **thin** panels (faster charging), enough area,
+  a chiller-dependent plant, a real demand charge. Graphite helps but is hypothetical; label it so.
+- **Never tune or hide numbers to favour PCM.** Favouring PCM means presenting it first and showing the real
+  conditions where it pays. Judges will ask.
+
+## pcm/annual.py interface (the UI must use only this)
+```python
+from pcm.annual import Params, PRESETS, load_year, run, hottest_week, monthly_costs
+df = load_year()                       # once at app start
+r = run(df, Params(**kwargs))          # ~0.5 s
+r["kpis"]   # dict: material, category, pcm_usd_per_kg, area_m2, mass_kg, e_max_kwh, p_charge_kw, p_regen_kw,
+            #   pcm_capex_usd, base{...}, pcm{...} (each: energy_usd, demand_usd, chiller_kw, chiller_usd,
+            #   cooling_kwh, peak_grid_kw, total_usd), saving_usd, saving_pct, opex_saving_usd,
+            #   chiller_avoided_kw, chiller_avoided_usd, payback_yr (None = never), breakeven_usd_per_kg,
+            #   pue_base, pue_pcm, free_hours_full, free_hours_partial, it_filled_hours
+r["hourly"] # DataFrame (UTC index): q_it_kw, twb_c, free_frac, kwe_per_kwth, price, pcm_kw, pcm_kwh,
+            #   chiller_base_kw, chiller_pcm_kw, grid_base_kw, grid_pcm_kw
+r["params"] # dict of the Params used (for the assumptions card)
+hottest_week(r["hourly"]); monthly_costs(r["hourly"], Params(**kwargs))   # chart helpers
+```
+Params fields: it_mw, material, graphite, thickness_m, panels_per_mw, economiser, approach_k, demand_usd_per_kw_month,
+chiller_usd_per_kw, pcm_usd_per_kg (None = category default), plus the plant constants in the table above.

@@ -19,6 +19,7 @@ PCM_PRICE_DEFAULT = {"Organic / paraffin-based": 5.0, "Inorganic / salt hydrate-
 class Params:
     it_mw: float = 1.0                # peak IT power; ESIF shape is scaled to it
     material: str = "rt35hc"
+    graphite: bool = False            # Ritwik's HYPOTHETICAL 2x conductivity case
     thickness_m: float = 0.05
     panels_per_mw: float = 100.0      # 1 m² panels (Ritwik's Config default for ~1 MW)
     panel_area_m2: float = 1.0
@@ -111,12 +112,12 @@ def _costs(q_c, p_grid, k_f, f, price, month, p: Params) -> dict:
 
 
 def run(df: pd.DataFrame, p: Params) -> dict:
-    m = get_material(p.material)
+    m = get_material(p.material, p.graphite)
     q = df.it_kw_esif.to_numpy() / df.it_kw_esif.max() * p.it_mw * 1000   # Q_IT = P_IT, kW
     twb = wet_bulb_c(df.temp_c, df.rh_pct)
     k, f = cooling_factor(twb, p)
     price = df.price_usd_per_kwh.to_numpy()
-    month = ((df.index - pd.Timedelta(hours=5)).month - 1).to_numpy()   # local standard time months
+    month = (df.index.tz_convert("Etc/GMT+5").month - 1).to_numpy()   # local standard time months
     lim = pcm_limits(m, p)
     s, e = _dispatch(q, k, f, price, month, lim, p)
     q_pcm = q - s
@@ -162,3 +163,11 @@ def monthly_costs(hourly: pd.DataFrame, p: Params) -> pd.DataFrame:
         for x in ("base", "pcm")})
     out.index.name = "month"
     return out
+
+
+# Named starting points for the UI. Values come from a 192-run scan (see CLAUDE.md); nothing is tuned after the fact.
+PRESETS = {
+    "PCM showcase: chiller plant, salt hydrate, thin panels": dict(
+        material="na2so4", economiser=False, panels_per_mw=500, thickness_m=0.02),
+    "Boston as built: free cooling on, paraffin defaults": dict(),
+}
