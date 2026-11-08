@@ -5,6 +5,8 @@ Thermal tab: heat shifted by water vs PCM. Economics tab: exploratory five-year
 PCM-vs-water comparison. Every economic input carries a provenance label; several
 are unsourced placeholders. See SOURCES.md.
 """
+import asyncio
+from time import perf_counter
 from html import escape
 from pathlib import Path
 import pandas as pd
@@ -18,6 +20,7 @@ from pcm.economics import (
     RANGE, SOURCED, EconInputs, evaluate, pcm_price_default, sensitivity,
 )
 from pcm.materials import MATERIALS, get_material
+from pcm.peak_dispatch import optimize_peak_dispatch
 from pcm.thermal import Config, simulate, summarize
 from pcm.workload import normalize_month
 
@@ -67,8 +70,9 @@ econ_inputs_card = ui.card(
 )
 
 METHOD_MD = """
-**What is compared.** The PCM array against the water array from the Thermal tab (same panels, same
-volume, same dispatch). *Positive NPV = PCM beats water.*
+**What is compared.** The PCM array against the water array from the Thermal tab (same panels,
+volume and controller algorithm, but independently chosen feasible thresholds in optimized mode).
+*Positive NPV = PCM beats water under these modeling assumptions*, not versus no storage.
 
 **Value streams**
 
@@ -90,6 +94,10 @@ follow the cooling peak; chiller efficiency is constant; containment cost for co
 included (this favours PCM); and the default workload is synthetic.
 """
 
+LOADER_STYLE = "\n#flux-sim-loader { position:fixed; inset:0; z-index:1050; display:flex; align-items:center; justify-content:center; background:rgba(248,250,252,.96); opacity:0; visibility:hidden; pointer-events:none; transition:opacity .2s ease,visibility .2s ease; }\n#flux-sim-loader.visible { opacity:1; visibility:visible; pointer-events:auto; }\n.flux-sketch-card { width:min(760px,90vw); padding:clamp(18px,4vw,40px); color:#163047; text-align:center; }\n.flux-sketch-card h3 { font-size:clamp(20px,3vw,29px); font-weight:650; letter-spacing:-.03em; margin:0 0 6px; }\n.flux-sketch-card p { color:#56697c; font-size:14px; margin:6px 0 14px; }\n.flux-sketch { display:block; width:100%; max-height:360px; margin:10px auto 16px; overflow:visible; }\n.flux-sketch path, .flux-sketch line, .flux-sketch rect { stroke-linecap:round; stroke-linejoin:round; fill:none; vector-effect:non-scaling-stroke; }\n.flux-sketch .trace { stroke:#34739d; stroke-width:2; stroke-dasharray:1600; stroke-dashoffset:1600; animation:flux-trace 4.8s ease-in-out infinite; }\n.flux-sketch .detail { stroke:#5ca9bd; stroke-width:1.5; }\n.flux-sketch .delay-1 { animation-delay:.30s; } .flux-sketch .delay-2 { animation-delay:.65s; } .flux-sketch .delay-3 { animation-delay:1.0s; } .flux-sketch .delay-4 { animation-delay:1.35s; }\n.flux-sketch .flux-coolant { stroke:#26a3b3; stroke-width:3; stroke-dasharray:9 14; animation:flux-flow 1.0s linear infinite; }\n.flux-status { display:flex; align-items:center; justify-content:center; gap:10px; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:#496077; }\n.flux-status:before { content:\"\"; display:inline-block; width:8px; height:8px; border-radius:50%; background:#269eb5; animation:flux-pulse 1s ease-in-out infinite alternate; }\n@keyframes flux-trace { 0% { stroke-dashoffset:1600;opacity:.7; } 42%,78% { stroke-dashoffset:0;opacity:1; } 100% { stroke-dashoffset:-1600;opacity:.25; } }\n@keyframes flux-flow { to { stroke-dashoffset:-23; } }\n@keyframes flux-pulse { to { transform:scale(1.4);opacity:.3; } }\n@media (prefers-reduced-motion:reduce) { .flux-sketch .trace { animation:none;stroke-dashoffset:0; } .flux-sketch .flux-coolant,.flux-status:before { animation:none; } }"
+LOADER_SCRIPT = "\n(function(){\n  var timer = null;\n  function overlay(){ return document.getElementById(\"flux-sim-loader\"); }\n  function setBusy(busy){\n    if(timer){ clearTimeout(timer); timer=null; }\n    var run=document.getElementById(\"run\");\n    if(run) { if(busy) setTimeout(function(){run.disabled=true;},0); else run.disabled=false; }\n    if(busy){\n      timer=setTimeout(function(){ var el=overlay(); if(el){ el.classList.add(\"visible\"); el.setAttribute(\"aria-hidden\",\"false\"); } },220);\n    } else {\n      var el=overlay(); if(el){ el.classList.remove(\"visible\"); el.setAttribute(\"aria-hidden\",\"true\"); }\n    }\n  }\n  document.addEventListener(\"click\",function(e){\n    if(e.target.closest && e.target.closest(\"#run\"))setBusy(true);\n  },true);\n  function register(){\n    if(window.Shiny && !window.__fluxHandlerRegistered) {\n      window.__fluxHandlerRegistered=true;\n      Shiny.addCustomMessageHandler(\"flux_sim_finished\",function(){ setBusy(false); });\n    }\n  }\n  document.addEventListener(\"shiny:connected\",register);\n  document.addEventListener(\"shiny:disconnected\",function(){setBusy(false);});\n  if(document.readyState===\"loading\")document.addEventListener(\"DOMContentLoaded\",register);else register();\n})();"
+LOADER_HTML = "\n<div id=\"flux-sim-loader\" aria-live=\"polite\" aria-hidden=\"true\" role=\"status\">\n  <div class=\"flux-sketch-card\">\n    <h3>Tracing the cooling system</h3>\n    <p>Testing feasible thermal peak limits for PCM and water · synthetic workload</p>\n    <svg class=\"flux-sketch\" viewBox=\"0 0 760 350\" aria-label=\"Animated line sketch of server racks and a data center cooling loop\">\n      <g class=\"trace\">\n        <path d=\"M60 295 L160 95 L600 95 L700 295 M60 295 L700 295 M160 95 L160 38 L600 38 L600 95 M160 38 L60 217 M600 38 L700 217\"/>\n      </g>\n      <g class=\"trace detail delay-1\">\n        <path d=\"M98 252 L205 118 L303 118 L262 252 Z M116 252 L209 137 L291 137 L252 252 M150 252 L222 154 M192 252 L240 174 M225 252 L256 196\"/>\n        <path d=\"M457 118 L555 118 L662 252 L498 252 Z M469 137 L551 137 L644 252 M485 154 L611 252 M502 174 L568 252\"/>\n      </g>\n      <g class=\"trace detail delay-2\">\n        <path d=\"M314 115 L446 115 L492 292 L268 292 Z M338 133 L423 133 L456 270 L304 270 Z M330 171 L431 171 M322 207 L438 207 M313 244 L447 244\"/>\n        <path d=\"M145 277 L620 277 M174 308 L590 308 M326 328 L434 328\"/>\n      </g>\n      <g class=\"trace delay-3\">\n        <path d=\"M196 70 L565 70 L589 47 M200 78 L193 118 M548 78 L568 118 M379 70 L379 111\"/>\n        <path d=\"M44 320 L244 320 L264 306 M716 320 L516 320 L496 306\"/>\n      </g>\n      <g class=\"trace detail delay-4\">\n        <path d=\"M42 275 L42 328 L119 328 M641 328 L718 328 L718 275\"/>\n        <path d=\"M61 303 L83 303 M677 303 L699 303 M63 312 L88 312 M673 312 L697 312\"/>\n      </g>\n      <path class=\"flux-coolant\" d=\"M189 58 H580 L622 112 M190 58 L141 110\" />\n    </svg>\n    <div class=\"flux-status\">Calculating feasible peaks · No progress percentage estimated</div>\n  </div>\n</div>"
+
 app_ui = ui.page_sidebar(
     ui.sidebar(
         ui.h4("System configuration"),
@@ -99,13 +107,21 @@ app_ui = ui.page_sidebar(
         ui.input_checkbox("graphite", "Hypothetical nano-graphite enhancement", value=False),
         ui.input_numeric("panels", "Number of identical panels", value=100, min=1, max=10000),
         ui.input_slider("thickness", "Panel thickness (mm)", min=20, max=100, value=50, step=5),
+        ui.input_select("dispatch", "Cooling dispatch", choices={
+            "optimized": "Optimize each storage system's thermal peak",
+            "legacy": "Original daily top/bottom-eight-hours heuristic",
+        }, selected="optimized"),
+        ui.input_checkbox("cap_regen", "Legacy only: cap regeneration at no-storage peak", value=True),
+        ui.p("Idealization: uses the month's peak IT load in advance, same rule for water and PCM. Off reproduces the milestone-1 heuristic.", class_="small text-muted"),
         ui.input_action_button("run", "Run month simulation", class_="btn-primary w-100"),
         ui.hr(),
         ui.p("Fixed temperatures: 27 °C supply / 37 °C return. Panel face: 1 m².", class_="small"),
-        ui.p("Controller: same daily top-8/bottom-8 IT-power-hour schedule for both materials. Not price optimization.", class_="small text-muted"),
+        ui.p("Optimized mode searches independent, feasible hourly thermal-peak ceilings for PCM and water; idealized month-ahead knowledge. Legacy mode retains the eight-hour heuristic.", class_="small text-muted"),
         ui.p("Economics assumptions live on the Economics tab and update instantly; the simulation re-runs only when you press Run.", class_="small text-muted"),
         width=350,
     ),
+    ui.head_content(ui.tags.style(LOADER_STYLE), ui.tags.script(LOADER_SCRIPT)),
+    ui.HTML(LOADER_HTML),
     ui.div(
         ui.h2("Flux Capacitor"),
         ui.p("Liquid-cooled data center | water vs PCM storage | research prototype"),
@@ -113,6 +129,7 @@ app_ui = ui.page_sidebar(
             ui.nav_panel(
                 "Thermal",
                 ui.div("THERMAL RESULTS — no measured-data validation. Costs are on the Economics tab.", class_="alert alert-warning mt-2"),
+                ui.output_ui("dispatch_note"),
                 ui.output_ui("summary_cards"),
                 ui.layout_columns(
                     ui.card(ui.card_header("Heat transferred to storage (kW thermal)"), output_widget("storage_plot")),
@@ -168,9 +185,16 @@ def _fig(title: str, lines: list[tuple]):
 
 
 def server(input, output, session):
+    model_state = reactive.value(None)
+
     @reactive.calc
-    @reactive.event(input.run)
     def model():
+        return model_state.get()
+
+    @reactive.effect
+    @reactive.event(input.run)
+    async def _run_model():
+        started = perf_counter()
         try:
             upload = input.workload_file()
             if upload:
@@ -181,12 +205,58 @@ def server(input, output, session):
                 label = "Synthetic demo (not measured)"
             load = normalize_month(raw)
             mat = get_material(input.material(), input.graphite())
-            cfg = Config(panels=int(input.panels()), thickness_m=float(input.thickness())/1000)
-            result = simulate(load, mat, cfg)
-            return {"result": result, "summary": summarize(result), "material": mat, "label": label,
-                    "cfg": cfg, "synthetic": not upload}
+            cfg = Config(panels=int(input.panels()), thickness_m=float(input.thickness())/1000,
+                         cap_regeneration=bool(input.cap_regen()))
+            dispatch = input.dispatch()
+            if dispatch == "optimized":
+                result, peak = await asyncio.to_thread(optimize_peak_dispatch, load, mat, cfg)
+            else:
+                result = await asyncio.to_thread(simulate, load, mat, cfg)
+                peak = None
+            model_state.set({
+                "result": result, "summary": summarize(result), "material": mat,
+                "label": label, "cfg": cfg, "synthetic": not upload,
+                "dispatch": dispatch, "peak": peak, "elapsed_s": perf_counter() - started,
+            })
         except Exception as exc:
-            return {"error": f"Cannot run simulation: {exc}"}
+            model_state.set({"error": f"Cannot run simulation: {exc}"})
+        finally:
+            await session.send_custom_message("flux_sim_finished", {})
+
+    @render.ui
+    def dispatch_note():
+        d = model()
+        if not d or "error" in d:
+            return ui.div()
+        if d["dispatch"] == "optimized":
+            pk = d["peak"]
+            assert pk is not None
+            return ui.div(
+                ui.strong("Independent threshold peak-shaving dispatch"),
+                ui.p(
+                    f"Best feasible hourly peak: PCM {pk.pcm_target_kw:,.2f} kWₜₕ, "
+                    f"water {pk.water_target_kw:,.2f} kWₜₕ, vs no storage "
+                    f"{d['summary']['it_peak_kw']:,.2f} kWₜₕ. "
+                    f"Month-end stored heat: PCM {pk.pcm_end_stored_kwh:.1f} kWhₜₕ; "
+                    f"water {pk.water_end_stored_kwh:.1f} kWhₜₕ. "
+                    f"Calculation {d['elapsed_s']:.1f} s on this server.",
+                    class_="mb-1",
+                ),
+                ui.p(
+                    "Uses knowledge of the entire month and both stores begin at 27°C. "
+                    "End-of-month state is not forced to match the starting state: "
+                    "repeated monthly peak shaving and capital savings remain hypothetical. "
+                    "The synthetic profile is not field data.",
+                    class_="small mb-0",
+                ),
+                class_="alert alert-info mt-2",
+            )
+        return ui.div(
+            "Original eight-hour heuristic; regeneration cap "
+            + ("on" if d["cfg"].cap_regeneration else "off")
+            + f". Calculation {d['elapsed_s']:.1f} s.",
+            class_="alert alert-secondary mt-2",
+        )
 
     @render.ui
     def summary_cards():
@@ -248,8 +318,10 @@ def server(input, output, session):
                 "Panel back face insulated, 1D conduction, idealized uniform interface coefficient. "
                 "No heat-exchanger pressure drop, tank wall/encapsulation, hysteresis, corrosion, graphite cost, "
                 "weather-linked cooling plant, or measured facility calibration. \n"
-                "Comparison is heat shifted; cost effects are on the Economics tab and rest on the assumptions listed there. "
-                "Both systems use identical geometry and the same fixed load-ranking dispatch heuristic.\n"
+                "Comparison is heat shifted; cost effects are on the Economics tab and rest on the assumptions listed there. " +
+                ("Optimized independent load-ceiling dispatch with perfect monthly foresight.\n"
+                 if d["dispatch"] == "optimized" else
+                 "Both systems use the same fixed load-ranking heuristic.\n") +
                 f"Material source: {d['material'].source_url}")
 
     @render.data_frame
@@ -292,7 +364,8 @@ def server(input, output, session):
             sens = sensitivity(d["result"], d["material"], d["cfg"], inp, synthetic=d["synthetic"])
         except ValueError as exc:
             return {"error": str(exc)}
-        return {"res": res, "inp": inp, "sens": sens, "material": d["material"]}
+        return {"res": res, "inp": inp, "sens": sens, "material": d["material"],
+                "dispatch": d["dispatch"], "peak": d["peak"]}
 
     def _econ_ready():
         e = econ()
@@ -308,6 +381,16 @@ def server(input, output, session):
         critical_keys = ("EXCEEDS", "RAISES", "water's dispatch spike", "synthetic")
         critical = [w for w in e["res"].warnings if any(k in w for k in critical_keys)]
         alerts = "".join(f'<div class="alert alert-danger py-2 mb-2">{escape(w)}</div>' for w in critical)
+        if e["dispatch"] == "optimized":
+            alerts += (
+                '<div class="alert alert-warning py-2 mb-2">'
+                'Optimized mode uses full-month foresight and starts at 27°C. '
+                'Ending storage energy can differ from the starting state; '
+                'chiller capacity and demand-charge credits have NOT been '
+                'validated for repeated months. Read the terminal-heat '
+                'adjustment caveat in the README before quoting an NPV.'
+                '</div>'
+            )
         items = "".join(f"<li>{escape(w)}</li>" for w in e["res"].warnings)
         return ui.HTML(alerts + f'<details class="mb-3"><summary><b>All limitations that apply to these numbers ({len(e["res"].warnings)})</b></summary>'
                        f'<ul class="small mt-2">{items}</ul></details>')

@@ -23,6 +23,11 @@ class Config:
     timestep_s: float = 60.0
     peak_hours_daily: int = 8
     regen_hours_daily: int = 8
+    # When True, heat released during regeneration is limited each hour to the headroom
+    # under the month's no-storage peak (max IT power - this hour's IT power), so storage
+    # cannot create a new cooling peak. This uses perfect foresight of the month's peak,
+    # an idealization applied identically to water and PCM. False reproduces milestone 1.
+    cap_regeneration: bool = True
 
 
 def _state_to_temp(h: np.ndarray, material: Material):
@@ -81,9 +86,12 @@ def simulate(workload: pd.DataFrame, material: Material, cfg: Config) -> pd.Data
     c_water = 1000.0 * area * cfg.thickness_m * 4180.0
     u = cfg.heat_transfer_w_m2_k
     modes = _mode_schedule(workload.reset_index(drop=True), cfg)
+    month_peak_kw = float(workload.it_power_kw.max())
     rows = []
     for i, (ts, q_it) in enumerate(zip(workload.timestamp, workload.it_power_kw)):
         mode = int(modes[i])
+        # Maximum heat (W) either system may release into the plant this hour.
+        regen_cap_w = max(0.0, month_peak_kw - float(q_it)) * 1000.0 if cfg.cap_regeneration else float("inf")
         fluid_temp = cfg.return_c if mode == 1 else cfg.supply_c
         energy_pcm_j = 0.0
         energy_water_j = 0.0
@@ -98,7 +106,7 @@ def simulate(workload: pd.DataFrame, material: Material, cfg: Config) -> pd.Data
                 if mode == 1:
                     q_surface = max(0.0, min(q_surface, float(q_it)*1000))
                 else:
-                    q_surface = min(0.0, q_surface)
+                    q_surface = max(min(0.0, q_surface), -regen_cap_w)
                 q_internal = material.conductivity_w_m_k * area/dx * (temps[:-1]-temps[1:])
                 net = np.zeros(cfg.pcm_cells)
                 net[0] += q_surface
@@ -111,7 +119,7 @@ def simulate(workload: pd.DataFrame, material: Material, cfg: Config) -> pd.Data
                 if mode == 1:
                     q_water = max(0.0, min(q_water, float(q_it)*1000))
                 else:
-                    q_water = min(0.0, q_water)
+                    q_water = max(min(0.0, q_water), -regen_cap_w)
                 t_water += q_water*dt/c_water
                 energy_water_j += q_water*dt
         t, fraction = _state_to_temp(h_pcm, material)
